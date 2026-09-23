@@ -108,6 +108,74 @@ test.describe('assertNone', () => {
   })
 })
 
+test.describe('pageErrors', () => {
+  test('captures uncaught exceptions that never reach the console channel', async ({ page }) => {
+    const consoleOnly = watchConsole(page, { levels: ['error', 'warn'] })
+    const withPageErrors = watchConsole(page, { levels: ['error'], pageErrors: true })
+
+    await emit(page, `null.foo()`)
+    await page.waitForTimeout(100)
+
+    // This is the whole point: the console channel sees nothing at all.
+    expect(consoleOnly.messages()).toHaveLength(0)
+
+    const captured = withPageErrors.messages()
+    expect(captured).toHaveLength(1)
+    expect(captured[0].level).toBe('pageerror')
+    expect(captured[0].error).toBeInstanceOf(Error)
+    expect(captured[0].error?.name).toBe('TypeError')
+  })
+
+  test('is opt-in — disabled by default', async ({ page }) => {
+    const watcher = watchConsole(page, { levels: ['error'] })
+
+    await emit(page, `null.foo()`)
+    await page.waitForTimeout(100)
+
+    expect(watcher.messages()).toHaveLength(0)
+  })
+
+  test('ignore patterns apply to page errors', async ({ page }) => {
+    const watcher = watchConsole(page, { levels: ['error'], pageErrors: true, ignore: [/ResizeObserver/] })
+
+    await emit(page, `setTimeout(() => { throw new Error('ResizeObserver loop limit exceeded') }, 0)`)
+    await page.waitForTimeout(150)
+
+    expect(watcher.messages()).toHaveLength(0)
+  })
+
+  test('captures console errors and page errors together', async ({ page }) => {
+    const watcher = watchConsole(page, { levels: ['error'], pageErrors: true })
+
+    await emit(page, `console.error('from console'); null.foo()`)
+    await page.waitForTimeout(100)
+
+    expect(watcher.messages().map(m => m.level).sort()).toEqual(['error', 'pageerror'])
+  })
+
+  test('assertNone reports the error name and says "browser message(s)"', async ({ page }) => {
+    const watcher = watchConsole(page, { levels: ['error'], pageErrors: true })
+
+    await emit(page, `null.foo()`)
+    await page.waitForTimeout(100)
+
+    expect(() => watcher.assertNone()).toThrow(/1 browser message\(s\) detected/)
+    expect(() => watcher.assertNone()).toThrow(/\[pageerror\] TypeError:/)
+  })
+
+  test('stop() detaches the pageerror listener too', async ({ page }) => {
+    const watcher = watchConsole(page, { levels: ['error'], pageErrors: true })
+
+    await emit(page, `null.foo()`)
+    await page.waitForTimeout(100)
+    watcher.stop()
+    await emit(page, `undefined.bar()`)
+    await page.waitForTimeout(100)
+
+    expect(watcher.messages()).toHaveLength(1)
+  })
+})
+
 test.describe('stop', () => {
   test('detaches the listener so later messages are not captured', async ({ page }) => {
     const watcher = watchConsole(page, { levels: ['error'] })

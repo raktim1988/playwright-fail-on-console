@@ -12,6 +12,7 @@ var LEVEL_ALIASES = {
 var CONSOLE_METHOD = {
   warning: "warn"
 };
+var PAGE_ERROR_LEVEL = "pageerror";
 function watchConsole(page, options = {}) {
   const levels = options.levels ?? ["error"];
   const matchedTypes = new Set(levels.flatMap((level) => LEVEL_ALIASES[level] ?? [level]));
@@ -42,19 +43,30 @@ function watchConsole(page, options = {}) {
     }
   }
   page.on("console", handler);
+  function errorHandler(error) {
+    const text = error.message || String(error);
+    if (isIgnored(text)) return;
+    captured.push({ level: PAGE_ERROR_LEVEL, text, url: page.url(), error });
+  }
+  if (options.pageErrors) page.on("pageerror", errorHandler);
   return {
     messages: () => [...captured],
     assertNone() {
       if (captured.length === 0) return;
-      const summary = captured.map((m, i) => `  ${i + 1}. [${m.level}] ${m.text}
-     at: ${m.url}`).join("\n");
+      const summary = captured.map((m, i) => {
+        const label = m.error?.name ? `${m.error.name}: ${m.text}` : m.text;
+        return `  ${i + 1}. [${m.level}] ${label}
+     at: ${m.url}`;
+      }).join("\n");
+      const noun = options.pageErrors ? "browser message(s)" : "console message(s)";
       throw new Error(
-        `[playwright-fail-on-console] ${captured.length} console message(s) detected:
+        `[playwright-fail-on-console] ${captured.length} ${noun} detected:
 ${summary}`
       );
     },
     stop() {
       page.off("console", handler);
+      if (options.pageErrors) page.off("pageerror", errorHandler);
     }
   };
 }
@@ -70,9 +82,16 @@ var test = base.extend({
     await use(watcher);
     watcher.stop();
     watcher.assertNone();
+  },
+  failOnBrowserErrors: async ({ page }, use) => {
+    const watcher = watchConsole(page, { levels: ["error"], pageErrors: true });
+    await use(watcher);
+    watcher.stop();
+    watcher.assertNone();
   }
 });
 export {
+  PAGE_ERROR_LEVEL,
   expect,
   test,
   watchConsole

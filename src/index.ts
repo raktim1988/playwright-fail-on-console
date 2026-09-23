@@ -22,12 +22,30 @@ const CONSOLE_METHOD: Record<string, string> = {
   warning: 'warn',
 }
 
+/**
+ * Marker `level` used for uncaught page exceptions. Deliberately not a
+ * `ConsoleLevel` — Playwright emits these on the separate `pageerror` event,
+ * never on the `console` event.
+ */
+export const PAGE_ERROR_LEVEL = 'pageerror'
+
 export interface WatchOptions {
   /** Console levels to capture. Default: ['error'] */
   levels?: ConsoleLevel[]
+  /**
+   * Also capture uncaught exceptions and unhandled rejections via
+   * `page.on('pageerror')`. These never appear on the `console` event, so
+   * without this a page that is actively throwing is reported as clean.
+   * Default: false (opt-in, for backwards compatibility).
+   */
+  pageErrors?: boolean
   /** Messages matching this pattern are ignored (string = substring match, RegExp = regex) */
   ignore?: Array<string | RegExp>
-  /** If true, throw immediately when a message fires instead of collecting. Default: false */
+  /**
+   * If true, throw immediately when a message fires instead of collecting.
+   * Default: false. Note this applies to console messages only — see
+   * {@link WatchOptions.pageErrors}.
+   */
   failImmediately?: boolean
 }
 
@@ -35,6 +53,8 @@ export interface ConsoleMessage {
   level: string
   text: string
   url: string
+  /** The original Error, for `pageerror` entries only. Gives access to `.stack`. */
+  error?: Error
 }
 
 export interface ConsoleWatcher {
@@ -75,19 +95,39 @@ export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWat
 
   page.on('console', handler)
 
+  /**
+   * Uncaught exceptions arrive on a separate event and are never mirrored onto
+   * `console`. We only ever collect here — throwing from a `pageerror` listener
+   * causes unpredictable behaviour in Playwright, so `failImmediately` is
+   * deliberately not honoured for this channel.
+   * See https://github.com/microsoft/playwright/issues/28056
+   */
+  function errorHandler(error: Error): void {
+    const text = error.message || String(error)
+    if (isIgnored(text)) return
+    captured.push({ level: PAGE_ERROR_LEVEL, text, url: page.url(), error })
+  }
+
+  if (options.pageErrors) page.on('pageerror', errorHandler)
+
   return {
     messages: () => [...captured],
     assertNone(): void {
       if (captured.length === 0) return
       const summary = captured
-        .map((m, i) => `  ${i + 1}. [${m.level}] ${m.text}\n     at: ${m.url}`)
+        .map((m, i) => {
+          const label = m.error?.name ? `${m.error.name}: ${m.text}` : m.text
+          return `  ${i + 1}. [${m.level}] ${label}\n     at: ${m.url}`
+        })
         .join('\n')
+      const noun = options.pageErrors ? 'browser message(s)' : 'console message(s)'
       throw new Error(
-        `[playwright-fail-on-console] ${captured.length} console message(s) detected:\n${summary}`
+        `[playwright-fail-on-console] ${captured.length} ${noun} detected:\n${summary}`
       )
     },
     stop(): void {
       page.off('console', handler)
+      if (options.pageErrors) page.off('pageerror', errorHandler)
     },
   }
 }
@@ -95,6 +135,7 @@ export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWat
 type FailOnConsoleFixtures = {
   failOnConsoleError: ConsoleWatcher
   failOnConsoleWarn: ConsoleWatcher
+  failOnBrowserErrors: ConsoleWatcher
 }
 
 export const test = base.extend<FailOnConsoleFixtures>({
@@ -106,6 +147,12 @@ export const test = base.extend<FailOnConsoleFixtures>({
   },
   failOnConsoleWarn: async ({ page }, use) => {
     const watcher = watchConsole(page, { levels: ['error', 'warn'] })
+    await use(watcher)
+    watcher.stop()
+    watcher.assertNone()
+  },
+  failOnBrowserErrors: async ({ page }, use) => {
+    const watcher = watchConsole(page, { levels: ['error'], pageErrors: true })
     await use(watcher)
     watcher.stop()
     watcher.assertNone()
