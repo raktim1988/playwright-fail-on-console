@@ -2,9 +2,11 @@ import * as _playwright_test from '@playwright/test';
 import { Page } from '@playwright/test';
 export { expect } from '@playwright/test';
 
+/** Console levels accepted by {@link WatchOptions.levels}. */
+type ConsoleLevel = 'error' | 'warn' | 'warning' | 'info' | 'log' | 'debug';
 interface WatchOptions {
     /** Console levels to capture. Default: ['error'] */
-    levels?: Array<'error' | 'warn' | 'info' | 'log'>;
+    levels?: ConsoleLevel[];
     /** Messages matching this pattern are ignored (string = substring match, RegExp = regex) */
     ignore?: Array<string | RegExp>;
     /** If true, throw immediately when a message fires instead of collecting. Default: false */
@@ -27,4 +29,4 @@ type FailOnConsoleFixtures = {
 };
 declare const test: _playwright_test.TestType<_playwright_test.PlaywrightTestArgs & _playwright_test.PlaywrightTestOptions & FailOnConsoleFixtures, _playwright_test.PlaywrightWorkerArgs & _playwright_test.PlaywrightWorkerOptions>;
 
-export { type ConsoleMessage, type ConsoleWatcher, type WatchOptions, test, watchConsole };
+export { type ConsoleLevel, type ConsoleMessage, type ConsoleWatcher, type WatchOptions, test, watchConsole };

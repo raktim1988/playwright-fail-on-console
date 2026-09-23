@@ -1,8 +1,30 @@
 import { test as base, Page, ConsoleMessage as PWConsoleMessage } from '@playwright/test'
 
+/** Console levels accepted by {@link WatchOptions.levels}. */
+export type ConsoleLevel = 'error' | 'warn' | 'warning' | 'info' | 'log' | 'debug'
+
+/**
+ * Playwright reports `console.warn()` as type `'warning'`, so a literal
+ * `'warn'` comparison never matches. Map each accepted level onto every raw
+ * `ConsoleMessage.type()` value that should satisfy it.
+ */
+const LEVEL_ALIASES: Record<ConsoleLevel, string[]> = {
+  error: ['error'],
+  warn: ['warn', 'warning'],
+  warning: ['warn', 'warning'],
+  info: ['info'],
+  log: ['log'],
+  debug: ['debug'],
+}
+
+/** Raw `type()` value -> the console method that produced it, for error text. */
+const CONSOLE_METHOD: Record<string, string> = {
+  warning: 'warn',
+}
+
 export interface WatchOptions {
   /** Console levels to capture. Default: ['error'] */
-  levels?: Array<'error' | 'warn' | 'warning' | 'info' | 'log'>
+  levels?: ConsoleLevel[]
   /** Messages matching this pattern are ignored (string = substring match, RegExp = regex) */
   ignore?: Array<string | RegExp>
   /** If true, throw immediately when a message fires instead of collecting. Default: false */
@@ -23,6 +45,7 @@ export interface ConsoleWatcher {
 
 export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWatcher {
   const levels = options.levels ?? ['error']
+  const matchedTypes = new Set(levels.flatMap(level => LEVEL_ALIASES[level] ?? [level]))
   const ignore = options.ignore ?? []
   const captured: ConsoleMessage[] = []
 
@@ -33,11 +56,7 @@ export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWat
   }
 
   function handler(msg: PWConsoleMessage): void {
-    const type = msg.type()
-    // Playwright emits 'warning' for console.warn — normalise to match user input
-    const normalised = type === 'warning' ? 'warning' : type
-    const levelsNormalised = levels.map(l => l === 'warn' ? 'warning' : l)
-    if (!levelsNormalised.includes(normalised as 'error' | 'warning' | 'info' | 'log')) return
+    if (!matchedTypes.has(msg.type())) return
     const text = msg.text()
     if (isIgnored(text)) return
     const entry: ConsoleMessage = {
@@ -47,8 +66,9 @@ export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWat
     }
     captured.push(entry)
     if (options.failImmediately) {
+      const method = CONSOLE_METHOD[entry.level] ?? entry.level
       throw new Error(
-        `[playwright-fail-on-console] console.${entry.level} detected:\n  ${entry.text}\n  at: ${entry.url}`
+        `[playwright-fail-on-console] console.${method} detected:\n  ${entry.text}\n  at: ${entry.url}`
       )
     }
   }

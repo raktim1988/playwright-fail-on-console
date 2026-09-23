@@ -58,9 +58,24 @@ test('checkout flow', async ({ page }) => {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `levels` | `Array<'error'\|'warn'\|'info'\|'log'>` | `['error']` | Console levels to capture |
+| `levels` | `Array<'error'\|'warn'\|'warning'\|'info'\|'log'\|'debug'>` | `['error']` | Console levels to capture |
 | `ignore` | `Array<string\|RegExp>` | `[]` | Ignore messages containing this string or matching this regex |
 | `failImmediately` | `boolean` | `false` | Throw the moment a message fires rather than collecting until `assertNone()` |
+
+### A note on `warn` vs `warning`
+
+Playwright reports `console.warn()` with `ConsoleMessage.type() === 'warning'`,
+not `'warn'`. Both spellings are accepted in `levels` and mean the same thing,
+so `levels: ['warn']` reliably captures `console.warn()` calls.
+
+The `level` field on a captured message always reports Playwright's raw value
+(`'warning'`), so assertions written against `type()` keep working:
+
+```typescript
+const watcher = watchConsole(page, { levels: ['warn'] })
+// ... console.warn('Deprecation: old API endpoint used') fires
+watcher.messages()[0].level // 'warning'
+```
 
 ## Fixtures provided
 

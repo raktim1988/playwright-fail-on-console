@@ -27,8 +27,20 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_test = require("@playwright/test");
 var import_test2 = require("@playwright/test");
+var LEVEL_ALIASES = {
+  error: ["error"],
+  warn: ["warn", "warning"],
+  warning: ["warn", "warning"],
+  info: ["info"],
+  log: ["log"],
+  debug: ["debug"]
+};
+var CONSOLE_METHOD = {
+  warning: "warn"
+};
 function watchConsole(page, options = {}) {
   const levels = options.levels ?? ["error"];
+  const matchedTypes = new Set(levels.flatMap((level) => LEVEL_ALIASES[level] ?? [level]));
   const ignore = options.ignore ?? [];
   const captured = [];
   function isIgnored(text) {
@@ -37,7 +49,7 @@ function watchConsole(page, options = {}) {
     );
   }
   function handler(msg) {
-    if (!levels.includes(msg.type())) return;
+    if (!matchedTypes.has(msg.type())) return;
     const text = msg.text();
     if (isIgnored(text)) return;
     const entry = {
@@ -47,8 +59,9 @@ function watchConsole(page, options = {}) {
     };
     captured.push(entry);
     if (options.failImmediately) {
+      const method = CONSOLE_METHOD[entry.level] ?? entry.level;
       throw new Error(
-        `[playwright-fail-on-console] console.${entry.level} detected:
+        `[playwright-fail-on-console] console.${method} detected:
   ${entry.text}
   at: ${entry.url}`
       );
