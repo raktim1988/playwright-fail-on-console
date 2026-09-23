@@ -2,7 +2,7 @@ import { test as base, Page, ConsoleMessage as PWConsoleMessage } from '@playwri
 
 export interface WatchOptions {
   /** Console levels to capture. Default: ['error'] */
-  levels?: Array<'error' | 'warn' | 'info' | 'log'>
+  levels?: Array<'error' | 'warn' | 'warning' | 'info' | 'log'>
   /** Messages matching this pattern are ignored (string = substring match, RegExp = regex) */
   ignore?: Array<string | RegExp>
   /** If true, throw immediately when a message fires instead of collecting. Default: false */
@@ -33,7 +33,11 @@ export function watchConsole(page: Page, options: WatchOptions = {}): ConsoleWat
   }
 
   function handler(msg: PWConsoleMessage): void {
-    if (!levels.includes(msg.type() as 'error' | 'warn' | 'info' | 'log')) return
+    const type = msg.type()
+    // Playwright emits 'warning' for console.warn — normalise to match user input
+    const normalised = type === 'warning' ? 'warning' : type
+    const levelsNormalised = levels.map(l => l === 'warn' ? 'warning' : l)
+    if (!levelsNormalised.includes(normalised as 'error' | 'warning' | 'info' | 'log')) return
     const text = msg.text()
     if (isIgnored(text)) return
     const entry: ConsoleMessage = {
