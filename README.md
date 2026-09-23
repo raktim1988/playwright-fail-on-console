@@ -2,6 +2,11 @@
 
 > Like `jest-fail-on-console` — but for Playwright.
 
+[![npm](https://img.shields.io/npm/v/playwright-fail-on-console.svg?color=fe7d37)](https://www.npmjs.com/package/playwright-fail-on-console)
+[![downloads](https://img.shields.io/npm/dm/playwright-fail-on-console.svg?label=downloads&color=44cc11)](https://www.npmjs.com/package/playwright-fail-on-console)
+[![license](https://img.shields.io/npm/l/playwright-fail-on-console.svg?color=007ec6)](./LICENSE)
+[![PRs](https://img.shields.io/badge/PRs-welcome-44cc11.svg)](https://github.com/raktim1988/playwright-fail-on-console/pulls)
+
 Your Playwright test passed. The page logged `console.error: Payment SDK failed to initialise`. Nobody noticed. This package makes Playwright notice.
 
 It also catches the thing most people miss: **uncaught page exceptions never reach the `console` event at all.** A page throwing `TypeError: undefined is not a function` produces *zero* console events — so a hand-rolled `page.on('console')` check reports it as clean. See [Console errors vs page errors](#console-errors-vs-page-errors).
